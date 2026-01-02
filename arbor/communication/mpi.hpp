@@ -373,6 +373,24 @@ T reduce(T value, MPI_Op op, MPI_Comm comm) {
 }
 
 template <typename T>
+void reduce(const T* send, T* recv, std::size_t count, MPI_Op op, MPI_Comm comm) {
+    using traits = mpi_traits<T>;
+    static_assert(traits::is_mpi_native_type(),
+                  "can only perform reductions on MPI native types");
+
+    MPI_OR_THROW(MPI_Allreduce, send, recv, count, traits::mpi_type(), op, comm);
+}
+
+template <typename T>
+void all_gather(const T* send, T* recv, std::size_t count, MPI_Comm comm) {
+    using traits = mpi_traits<T>;
+    static_assert(traits::is_mpi_native_type(),
+                  "can only perform reductions on MPI native types");
+
+    MPI_OR_THROW(MPI_Allgather, send, count, traits::mpi_type(), recv, count, traits::mpi_type(), comm);
+}
+
+template <typename T>
 std::pair<T,T> minmax(T value) {
     return {reduce<T>(value, MPI_MIN), reduce<T>(value, MPI_MAX)};
 }

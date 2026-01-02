@@ -30,6 +30,12 @@
 #ifdef ARB_MPI_ENABLED
 #include <mpi.h>
 #include <arborenv/with_mpi.hpp>
+// Include Arbor's internal MPI wrapper to test new overloads
+#include "../../arbor/communication/mpi.hpp" 
+#endif
+
+#ifdef ARB_GPU
+#include <cuda_runtime.h>
 #endif
 
 using arb::cell_gid_type;
@@ -209,6 +215,67 @@ int main(int argc, char** argv) {
             std::cout << "mpi:      " << (has_mpi(context)? "yes": "no") << "\n";
             std::cout << "ranks:    " << num_ranks(context) << "\n" << std::endl;
         }
+
+#ifdef ARB_MPI_ENABLED
+#ifdef ARB_GPU
+        // CUDA-aware MPI Verification Block
+        // This block tests if we can pass device pointers directly to MPI via Arbor's wrappers.
+        {
+             if (root) std::cout << "Running CUDA-aware MPI Test..." << std::endl;
+
+             // allocating 10 floats on GPU
+             size_t N = 10;
+             size_t size_bytes = N * sizeof(float);
+             float* d_send = nullptr;
+             float* d_recv = nullptr;
+
+             // Use cudaMalloc directly (requires linking against cudart)
+             cudaError_t e1 = cudaMalloc((void**)&d_send, size_bytes);
+             cudaError_t e2 = cudaMalloc((void**)&d_recv, size_bytes * arb::mpi::size(MPI_COMM_WORLD));
+
+             if (e1 != cudaSuccess || e2 != cudaSuccess) {
+                 std::cerr << "CUDA Malloc failed!" << std::endl;
+             } else {
+                 // Initialize send buffer on device (simple kernel or memcpy)
+                 std::vector<float> h_send(N, (float)arb::mpi::rank(MPI_COMM_WORLD));
+                 cudaMemcpy(d_send, h_send.data(), size_bytes, cudaMemcpyHostToDevice);
+
+                 // Perform Allgather using device pointers
+                 try {
+                    arb::mpi::all_gather(d_send, d_recv, N, MPI_COMM_WORLD);
+
+                    // Verify results
+                    std::vector<float> h_recv(N * arb::mpi::size(MPI_COMM_WORLD));
+                    cudaMemcpy(h_recv.data(), d_recv, h_recv.size() * sizeof(float), cudaMemcpyDeviceToHost);
+
+                    bool pass = true;
+                    int num_ranks = arb::mpi::size(MPI_COMM_WORLD);
+                    for (int r = 0; r < num_ranks; ++r) {
+                        for (size_t i = 0; i < N; ++i) {
+                            if (h_recv[r * N + i] != (float)r) {
+                                pass = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (root) {
+                        if (pass) std::cout << "CUDA-aware MPI Test: PASSED" << std::endl;
+                        else      std::cout << "CUDA-aware MPI Test: FAILED (Data mismatch)" << std::endl;
+                    }
+
+                 } catch (std::exception& e) {
+                     std::cerr << "MPI Exception: " << e.what() << std::endl;
+                 }
+
+                 cudaFree(d_send);
+                 cudaFree(d_recv);
+             }
+             if (root) std::cout << "---------------------------------------" << std::endl;
+        }
+#endif
+#endif
+
 
         arb::profile::meter_manager meters;
         meters.start(context);
