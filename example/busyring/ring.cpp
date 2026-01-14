@@ -34,7 +34,7 @@
 #include "../../arbor/communication/mpi.hpp" 
 #endif
 
-#ifdef ARB_GPU
+#ifdef ARB_GPU_ENABLED
 #include <cuda_runtime.h>
 #endif
 
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
         }
 
 #ifdef ARB_MPI_ENABLED
-#ifdef ARB_GPU
+#ifdef ARB_GPU_ENABLED
         // CUDA-aware MPI Verification Block
         // This block tests if we can pass device pointers directly to MPI via Arbor's wrappers.
         {
